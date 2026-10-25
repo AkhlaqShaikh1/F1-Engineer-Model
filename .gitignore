@@ -2,3 +2,4 @@ __pycache__/
 tracks.json
 config.json
 .fastf1-cache/
+build.log

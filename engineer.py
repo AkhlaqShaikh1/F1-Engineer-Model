@@ -1,18 +1,15 @@
-"""F1 25 race engineer. Listens to the game's UDP telemetry and talks to you over the Windows voice.
+"""The race engineer brain: parses F1 25 UDP telemetry (2025 format) and decides what to say.
 
-In game: Settings > Telemetry Settings > UDP Telemetry On, Broadcast Off, IP 127.0.0.1,
-Port 20777, Send Rate 20Hz, UDP Format 2025.
-Run: python engineer.py        (add --mute for text only)
+Only advises things the driver can change in F1 25: setup menu items in the garage, and
+brake bias, differential and ERS mode on the MFD during a session.
 """
 import json
 import os
-import socket
 import struct
 import subprocess
-import sys
+import threading
 import time
 
-PORT = 20777
 CARS = 22
 HEADER = struct.Struct('<HBBBBBQfIIBB')                 # 29 bytes
 SESSION = struct.Struct('<BbbBHBbBHH')                  # first fields of the session packet only
@@ -20,8 +17,10 @@ LAP = struct.Struct('<IIHBHBHBHBfff15BHHBfB')            # 57 bytes per car
 TELEMETRY = struct.Struct('<HfffBbHBBH4H4B4BH4f4B')      # 60 bytes per car
 STATUS = struct.Struct('<5B3f2H2BH3Bb3fB3fB')            # 55 bytes per car
 SETUP = struct.Struct('<4B4f9B4fBf')                     # 50 bytes per car
-assert (HEADER.size, LAP.size, TELEMETRY.size, STATUS.size, SETUP.size) == (29, 57, 60, 55, 50)
+DAMAGE = struct.Struct('<4f4B4B4B18B')                   # 46 bytes per car (F1 25 added tyre blisters)
+assert (HEADER.size, LAP.size, TELEMETRY.size, STATUS.size, SETUP.size, DAMAGE.size) == (29, 57, 60, 55, 50, 46)
 
+ERS_MAX = 4e6  # joules
 # Wheel order in every array: RL, RR, FL, FR
 SETUP_NAMES = ('front wing', 'rear wing', 'on throttle diff', 'off throttle diff', 'front camber',
                'rear camber', 'front toe', 'rear toe', 'front suspension', 'rear suspension',
@@ -35,19 +34,22 @@ TRACKS = {0: 'Melbourne', 2: 'Shanghai', 3: 'Bahrain', 4: 'Barcelona', 5: 'Monac
           14: 'Abu Dhabi', 15: 'Austin', 16: 'Interlagos', 17: 'Austria', 19: 'Mexico', 20: 'Baku',
           26: 'Zandvoort', 27: 'Imola', 29: 'Jeddah', 30: 'Miami', 31: 'Las Vegas', 32: 'Qatar',
           39: 'Silverstone reverse', 40: 'Austria reverse', 41: 'Zandvoort reverse'}
-MEMORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tracks.json')
+WING_RANGE = {'low': '10 to 20', 'medium': '25 to 35', 'high': '40 to 50'}
+HERE = os.path.dirname(os.path.abspath(__file__))
+MEMORY = os.path.join(HERE, 'tracks.json')          # your own bests per track, written while you drive
+TRACK_DATA = os.path.join(HERE, 'track_data.json')  # real race data, built by build_track_data.py
 
 
-def load_memory():
+def load_json(path):
     try:
-        with open(MEMORY) as f:
+        with open(path, encoding='utf-8') as f:
             return json.load(f)
     except (OSError, ValueError):
         return {}
 
 
 def save_memory(mem):
-    with open(MEMORY, 'w') as f:
+    with open(MEMORY, 'w', encoding='utf-8') as f:
         json.dump(mem, f, indent=1)
 
 
@@ -56,11 +58,18 @@ def lap_words(ms):
     return f"{int(m)} {s:04.1f}" if m else f"{s:.1f}"
 
 
-class Radio:
-    """Prints and speaks. One PowerShell process keeps the voice warm so speech is instant."""
+def gap(car):
+    return (car[7] * 60000 + car[6]) / 1000  # delta to car in front, minutes part + ms part
 
-    def __init__(self, voice=True):
+
+class Radio:
+    """Prints, speaks, and hands each message to on_say (the overlay).
+    One PowerShell process keeps the Windows voice warm so speech is instant."""
+
+    def __init__(self, voice=True, on_say=None):
         self.last = {}
+        self.lock = threading.Lock()
+        self.on_say = on_say
         self.ps = None
         if voice:
             script = ("Add-Type -AssemblyName System.Speech;"
@@ -68,17 +77,24 @@ class Radio:
                       "while(($l=[Console]::In.ReadLine()) -ne $null){try{$s.Speak($l)}catch{}}")
             try:
                 self.ps = subprocess.Popen(['powershell', '-NoProfile', '-Command', script],
-                                           stdin=subprocess.PIPE, text=True)
+                                           stdin=subprocess.PIPE, text=True,
+                                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             except OSError:
                 print('Voice not available, text only.')
 
     def __call__(self, text, key=None, every=0):
+        with self.lock:  # telemetry thread and radio button thread both talk
+            self.speak(text, key, every)
+
+    def speak(self, text, key, every):
         now = time.monotonic()
         if key and now - self.last.get(key, -1e9) < every:
             return
         if key:
             self.last[key] = now
         print(time.strftime('%H:%M:%S'), text, flush=True)
+        if self.on_say:
+            self.on_say(text)
         if self.ps:
             try:
                 self.ps.stdin.write(text + '\n')
@@ -90,6 +106,7 @@ class Radio:
 class Engineer:
     def __init__(self, say):
         self.say = say
+        self.track_data = load_json(TRACK_DATA)
         self.reset(None)
 
     def reset(self, uid):
@@ -102,11 +119,14 @@ class Engineer:
         self.skip_lap = True      # out laps, pit laps and invalid laps get no lap-time/setup verdict
         self.clear_samples()
         self.status = self.setup = self.wear = None
+        self.cars = None
+        self.me = 0
         self.wing = 0
         self.best = None
         self.setup_best = {}
         self.compare_to = None
         self.wear_called = set()
+        self.last_advice = None
 
     def clear_samples(self):
         self.surf = [0.0] * 4
@@ -125,6 +145,15 @@ class Engineer:
             return 'race'
         return 'other'
 
+    def info(self):
+        return self.track_data.get(self.track or '')
+
+    def pit_window(self):
+        info = self.info()
+        if not info or not info.get('stops') or not self.total_laps:
+            return None
+        return max(2, round(info['first_stop_frac'] * self.total_laps))
+
     def handle(self, data):
         if len(data) < HEADER.size:
             return
@@ -135,6 +164,7 @@ class Engineer:
         fn = {1: self.on_session, 2: self.on_lap, 3: self.on_event, 5: self.on_setup,
               6: self.on_telemetry, 7: self.on_status, 10: self.on_damage}.get(pid)
         if fn and me < CARS:
+            self.me = me
             fn(data, me)
 
     # ---------- packets ----------
@@ -145,22 +175,7 @@ class Engineer:
         first = self.session_type is None
         self.session_type, self.total_laps, self.track = s[5], s[3], str(s[6])
         if first:
-            mode = self.mode()
-            name = TRACKS.get(s[6], 'this track')
-            if mode == 'practice':
-                msg = (f"Radio check. Practice at {name}. Track is {track_temp} degrees. Give me clean laps "
-                       "and I'll tell you what to change on the car.")
-                old = load_memory().get(self.track)
-                if old:
-                    st = old['setup']
-                    msg += (f" Last time here your best was {lap_words(old['best'])} with wings {st[0]:g} "
-                            f"and {st[1]:g}, diff {st[2]:g} on, {st[3]:g} off, brake bias {st[15]:g}.")
-                self.say(msg)
-            elif mode == 'quali':
-                self.say("Radio check. Qualifying. Warm the tyres on the out lap, then let's find the time.")
-            elif mode == 'race':
-                self.say(f"Radio check. {self.total_laps} laps today. I'll keep you updated on gaps, "
-                         "fuel and tyres. Good start now.")
+            self.briefing(track_temp)
         if self.weather is not None and weather != self.weather and weather < len(WEATHER):
             msg = f"Weather changing to {WEATHER[weather]}."
             if weather >= 3 > self.weather:
@@ -195,19 +210,19 @@ class Engineer:
         self.setup = s
 
     def on_damage(self, data, me):
-        stride = (len(data) - 29) // CARS
-        base = 29 + me * stride
-        self.wear = struct.unpack_from('<4f', data, base)
-        wing = max(data[base + stride - 20], data[base + stride - 19])  # front wing L/R, 20 bytes from the end
+        d = DAMAGE.unpack_from(data, 29 + me * DAMAGE.size)
+        self.wear = d[:4]
+        wing = max(d[16], d[17])  # front left / front right wing damage
         if wing - self.wing >= 15:
             self.say(f"Front wing damage, {wing} percent." +
                      (" Box this lap for a new nose." if wing >= 40 else " We can live with it."))
         self.wing = wing
-        if self.wear and max(self.wear) < 5:
+        if max(self.wear) < 5:
             self.wear_called.clear()  # fresh tyres after a stop
 
     def on_lap(self, data, me):
         cars = [LAP.unpack_from(data, 29 + i * LAP.size) for i in range(CARS)]
+        self.cars = cars
         mine = cars[me]
         lap_num = mine[14]
         if self.lap and lap_num == self.lap + 1:
@@ -231,6 +246,9 @@ class Engineer:
             name, ev = SAFETY_CAR.get(data[33], 'Safety car'), data[34]
             if ev == 0:
                 self.say(f"{name} deployed. Slow down, keep the delta positive, keep tyre temps up.")
+                window = self.pit_window()
+                if self.mode() == 'race' and window and abs(self.lap - window) <= 3:
+                    self.say("We are near the pit window. Cheap stop under the safety car, box if you want it.")
             elif ev == 1:
                 self.say(f"{name} ending. Get ready to go.")
             elif ev == 3:
@@ -247,6 +265,40 @@ class Engineer:
             self.say("Chequered flag. Good job mate, cool down lap now.")
 
     # ---------- the thinking ----------
+
+    def briefing(self, track_temp):
+        mode = self.mode()
+        info = self.info()
+        name = (info or {}).get('name') or TRACKS.get(int(self.track), 'this track')
+        if mode == 'practice':
+            msg = (f"Radio check. Practice at {name}. Track is {track_temp} degrees. Give me clean laps "
+                   "and I'll tell you what to change on the car.")
+            if info:
+                msg += (f" {info['downforce'].capitalize()} downforce track, {info['full_throttle_pct']} percent "
+                        f"full throttle. Start with wings around {WING_RANGE[info['downforce']]}.")
+                if info['heavy_brake_zones'] >= 6:
+                    msg += f" {info['heavy_brake_zones']} big stops, watch brake bias."
+                if info['deg'] == 'high':
+                    msg += " Tyre deg is high here, do a long run."
+            old = load_json(MEMORY).get(self.track)
+            if old:
+                st = old['setup']
+                msg += (f" Last time here your best was {lap_words(old['best'])} with wings {st[0]:g} "
+                        f"and {st[1]:g}, diff {st[2]:g} on, {st[3]:g} off, brake bias {st[15]:g}.")
+            self.say(msg)
+        elif mode == 'quali':
+            self.say("Radio check. Qualifying. Warm the tyres on the out lap, then let's find the time.")
+        elif mode == 'race':
+            msg = f"Radio check. {self.total_laps} laps today."
+            window = self.pit_window()
+            if info:
+                plan = ' to '.join(c.lower() for c in info['compounds'])
+                stops = 'one stop' if info['stops'] == 1 else f"{info['stops']} stops"
+                msg += f" In the real race here most cars did {stops}" + (f", {plan}." if plan else ".")
+                msg += f" Tyre deg is {info['deg']}."
+                if window:
+                    msg += f" Pit window around lap {window}."
+            self.say(msg + " Good start now.")
 
     def lap_done(self, mine, cars):
         mode = self.mode()
@@ -267,7 +319,7 @@ class Engineer:
         if self.best is None or ms < self.best:
             msg += ", your best lap."
             self.best = ms
-            mem = load_memory()
+            mem = load_json(MEMORY)
             old = mem.get(self.track)
             if self.setup and self.track and (not old or ms < old['best']):
                 mem[self.track] = {'best': ms, 'setup': list(self.setup)}
@@ -311,13 +363,14 @@ class Engineer:
                         "Move brake bias back one or two percent.")
         elif r_brake > f_brake:
             tips.append(f"Rear brakes hotter than the fronts, rears will lock.{bias} Move bias forward one percent.")
-        self.say(" ".join(tips) if tips else "Tyre and brake temps look balanced. Setup is in the window.")
+        self.last_advice = " ".join(tips) if tips else "Tyre and brake temps look balanced. Setup is in the window."
+        self.say(self.last_advice)
 
     def race_temps(self, surf):
         rear, front = (surf[0] + surf[1]) / 2, (surf[2] + surf[3]) / 2
         if rear > 105:
-            self.say("Rears overheating. Short shift out of slow corners. "
-                     "Take on throttle diff down 5 on the MFD.", 'rear_hot', 120)
+            self.say("Rears overheating. Short shift out of slow corners, "
+                     "and take the differential down a few on the MFD.", 'rear_hot', 120)
         if front > 105:
             self.say("Fronts overheating. Brake a bit earlier, move brake bias back a click on the MFD.",
                      'front_hot', 120)
@@ -326,13 +379,17 @@ class Engineer:
             self.say(f"Front brakes hot, {f_brake} degrees. Bias back a click, lift and coast "
                      "into the big stops.", 'brake_hot', 120)
 
-    def race_call(self, mine, cars):
+    def gaps(self, mine, cars):
         pos = mine[13]
-        laps_left = self.total_laps - mine[14] + 1
-        parts = [f"P{pos}."]
-        ahead = (mine[7] * 60000 + mine[6]) / 1000 if pos > 1 else None
+        ahead = gap(mine) if pos > 1 else None
         behind_car = next((c for c in cars if c[13] == pos + 1 and c[26] == 2), None)
-        behind = (behind_car[7] * 60000 + behind_car[6]) / 1000 if behind_car else None
+        return pos, ahead, gap(behind_car) if behind_car else None
+
+    def race_call(self, mine, cars):
+        pos, ahead, behind = self.gaps(mine, cars)
+        lap = mine[14]
+        laps_left = self.total_laps - lap + 1
+        parts = [f"P{pos}."]
         if ahead is not None:
             parts.append(f"Gap ahead {ahead:.1f}.")
         if behind is not None:
@@ -340,48 +397,62 @@ class Engineer:
         if ahead is not None and ahead < 1.0:
             parts.append("You have DRS, push now.")
         elif behind is not None and behind < 1.0:
-            parts.append("Car behind in DRS range. Defend, use overtake out of the last corner.")
+            parts.append("Car behind in DRS range. Defend, ERS overtake out of the last corner.")
         st = self.status
         if st:
             fuel = st[7]  # the plus/minus laps number from the MFD
             if fuel < -0.3:
-                parts.append(f"Fuel minus {abs(fuel):.1f}. Lift and coast, lean mix.")
-            elif mine[14] % 5 == 0:
+                parts.append(f"Fuel minus {abs(fuel):.1f}. Lift and coast into the big stops.")
+            elif lap % 5 == 0:
                 parts.append(f"Fuel plus {fuel:.1f}." if fuel > 0 else "Fuel on target.")
-            battery = st[19] / 4e6 * 100
+            battery = st[19] / ERS_MAX * 100
             if battery < 20:
-                parts.append(f"Battery {battery:.0f} percent. Harvest on the straights.")
+                parts.append(f"Battery {battery:.0f} percent. ERS to medium for a lap to recharge.")
         if self.wear:
             w = max(self.wear)
             for limit, msg in ((70, "Tyres are gone, box box this lap."),
-                               (55, "Tyre wear {w} percent. Pit window open, start thinking about the stop."),
+                               (55, "Tyre wear {w} percent. Start thinking about the stop."),
                                (35, "Tyre wear {w} percent, looking ok.")):
                 if w >= limit and limit not in self.wear_called:
                     self.wear_called.update(l for l in (35, 55, 70) if l <= limit)
                     parts.append(msg.format(w=round(w)))
                     break
+        window = self.pit_window()
+        if window and mine[16] == 0:
+            if lap == window - 2:
+                parts.append(f"Pit window opens in 2 laps, around lap {window}.")
+            elif lap == window:
+                parts.append("We are in the pit window. Box when the tyres drop off.")
         if laps_left == 1:
             parts.append("Last lap, bring it home.")
         elif laps_left in (5, 10):
             parts.append(f"{laps_left} laps to go.")
         self.say(" ".join(parts))
 
-
-def main():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(('0.0.0.0', PORT))
-    eng = Engineer(Radio('--mute' not in sys.argv))
-    print(f"Race engineer listening on UDP {PORT}. Start a session in F1 25. Ctrl+C to quit.")
-    while True:
-        data, _ = sock.recvfrom(4096)
-        try:
-            eng.handle(data)
-        except (struct.error, IndexError):
-            pass  # partial or unknown packet, skip it
-
-
-if __name__ == '__main__':
-    try:
-        main()
-    except KeyboardInterrupt:
-        pass
+    def report(self):
+        """Radio button: the driver asks for an update."""
+        mode = self.mode()
+        if mode == 'race' and self.cars:
+            mine = self.cars[self.me]
+            pos, ahead, behind = self.gaps(mine, self.cars)
+            parts = [f"Copy. P{pos}."]
+            if ahead is not None:
+                parts.append(f"Ahead {ahead:.1f}.")
+            if behind is not None:
+                parts.append(f"Behind {behind:.1f}.")
+            if self.status:
+                parts.append(f"Fuel {self.status[7]:+.1f}. Battery {self.status[19] / ERS_MAX * 100:.0f} percent.")
+            if self.wear:
+                parts.append(f"Tyres {max(self.wear):.0f} percent worn.")
+            laps_left = self.total_laps - mine[14] + 1
+            parts.append(f"{laps_left} laps to go.")
+            self.say(" ".join(parts))
+        elif mode in ('practice', 'quali'):
+            msg = "Copy."
+            if self.best:
+                msg += f" Best lap {lap_words(self.best)}."
+            if mode == 'practice' and self.last_advice:
+                msg += " " + self.last_advice
+            self.say(msg if msg != "Copy." else "Copy. Give me a clean lap first.")
+        else:
+            self.say("Radio check, loud and clear.")
