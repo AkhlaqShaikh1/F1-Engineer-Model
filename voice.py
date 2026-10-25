@@ -22,7 +22,7 @@ import winsound
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 VOICES = os.path.join(HERE, 'voices')
-DEFAULT_VOICE = 'en_GB-alan-medium'
+DEFAULT_VOICE = 'en_GB-northern_english_male-medium'
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 UTTERANCE_GAP = 0.5  # seconds of silence from Piper that ends one radio message
 

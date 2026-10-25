@@ -34,8 +34,8 @@ Drag the overlay to move it. Right-click it to quit. To remove the engineer, run
 
 ### Voice
 
-`install.bat` installs Piper and two voices: `en_GB-alan-medium` (default) and
-`en_GB-northern_english_male-medium`. To switch, set `"voice"` in `config.json` to either name,
+`install.bat` installs Piper and two voices: `en_GB-northern_english_male-medium` (default) and
+`en_GB-alan-medium`. To switch, set `"voice"` in `config.json` to either name,
 or to `"windows"` for the built-in Windows voice. Then restart the engineer.
 Preview a voice: `python voice.py "Box box, box box."`
 
