@@ -75,8 +75,16 @@ def degradation(laps):
     return round(deg, 3), 'low' if deg < 0.05 else 'medium' if deg < 0.1 else 'high'
 
 
+def corners(session, car):
+    """Official corner numbers as a share of lap distance, so the game's own track length can place them."""
+    lap_len = float(car['Distance'].max())
+    info = session.get_circuit_info()
+    return [[f"{int(c.Number)}{c.Letter or ''}", round(float(c.Distance) / lap_len, 4)]
+            for c in info.corners.itertuples()]
+
+
 def character(session):
-    car = session.laps.pick_fastest().get_car_data()
+    car = session.laps.pick_fastest().get_car_data().add_distance()
     speed, brake = car['Speed'].to_numpy(), car['Brake'].to_numpy().astype(bool)
     full = float((car['Throttle'] >= 98).mean() * 100)
     heavy, i = 0, 0
@@ -92,7 +100,7 @@ def character(session):
     # cut-offs fit the 2025 spread: Monza 75%, Las Vegas 68% low; Monaco 35%, Hungary 52% high
     downforce = 'low' if full >= 66 else 'medium' if full >= 54 else 'high'
     return {'full_throttle_pct': round(full), 'heavy_brake_zones': heavy,
-            'top_speed': int(speed.max()), 'downforce': downforce}
+            'top_speed': int(speed.max()), 'downforce': downforce, 'corners': corners(session, car)}
 
 
 def races(season):

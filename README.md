@@ -53,19 +53,31 @@ Remove it with `python app.py --unbind`.
 It only advises things you can change in F1 25: the **setup menu** in the garage, and **brake bias,
 differential and ERS mode** on the MFD. Everything else is driving technique.
 
+On track it only talks about what you can change while driving: brake bias, diff and ERS on
+the MFD, and technique. Setup menu advice waits until you're in the garage or pause the game.
+
 **Practice and time trial** (time trial is the quickest way to test it):
-- a track briefing: downforce level, starting wing range, big braking zones and tyre deg, plus your own best lap and setup from last time;
-- lap time against your best;
-- front vs rear tyre temps: understeer means front wing, front anti-roll bar or off-throttle diff; wheelspin means on-throttle diff or rear wing;
-- tyre pressures and brake bias, based on tyre and brake temps;
+- a short briefing: downforce and wing range, your best here, and the corner you keep getting wrong;
+- after every clean lap: lap time, then the corner where you lost the most against your best lap and why
+  (braked early, slow at the apex, late on the power), plus the corner where you gained;
+- lock-ups and wheelspin by corner, with the MFD fix (bias, diff) or the technique fix;
+- in the garage or pause menu: setup advice from tyre and brake temps (wings, diff, pressures);
 - each setup change, and whether it made you faster.
+
+**It learns you.** Per track, `tracks.json` keeps your all-time best lap corner by corner and how
+often you brake early, lock up, spin the rears or get on the power late at each corner. A new
+session coaches you against your all-time best from lap 1 and opens with your weakest corner.
+Repeated mistakes get called: "that's 3 laps in a row".
 
 **Race:**
 - the real-race strategy for that track, scaled to your race length (pit window lap);
 - position and gaps every lap, plus DRS range;
 - fuel plus or minus, battery, and tyre wear;
-- diff and bias changes on the MFD when tyres or brakes overheat;
+- live "lift and coast into turn X" before the two biggest stops when fuel, brakes or tyres need saving;
+- diff and bias changes on the MFD when tyres overheat;
 - safety car (including a cheap pit stop call), penalties, front wing damage, weather, and the last lap.
+
+Corner numbers are the official ones, placed using real F1 track data.
 
 ## Real-world track data
 
