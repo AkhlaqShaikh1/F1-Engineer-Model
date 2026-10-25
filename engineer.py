@@ -6,7 +6,6 @@ brake bias, differential and ERS mode on the MFD during a session.
 import json
 import os
 import struct
-import subprocess
 import threading
 import time
 
@@ -63,24 +62,13 @@ def gap(car):
 
 
 class Radio:
-    """Prints, speaks, and hands each message to on_say (the overlay).
-    One PowerShell process keeps the Windows voice warm so speech is instant."""
+    """Prints, speaks, and hands each message to on_say (the overlay)."""
 
-    def __init__(self, voice=True, on_say=None):
+    def __init__(self, voice=None, on_say=None):
         self.last = {}
         self.lock = threading.Lock()
         self.on_say = on_say
-        self.ps = None
-        if voice:
-            script = ("Add-Type -AssemblyName System.Speech;"
-                      "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;$s.Rate=1;"
-                      "while(($l=[Console]::In.ReadLine()) -ne $null){try{$s.Speak($l)}catch{}}")
-            try:
-                self.ps = subprocess.Popen(['powershell', '-NoProfile', '-Command', script],
-                                           stdin=subprocess.PIPE, text=True,
-                                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            except OSError:
-                print('Voice not available, text only.')
+        self.voice = voice  # anything with .say(text), see voice.py; None = text only
 
     def __call__(self, text, key=None, every=0):
         with self.lock:  # telemetry thread and radio button thread both talk
@@ -95,12 +83,11 @@ class Radio:
         print(time.strftime('%H:%M:%S'), text, flush=True)
         if self.on_say:
             self.on_say(text)
-        if self.ps:
+        if self.voice:
             try:
-                self.ps.stdin.write(text + '\n')
-                self.ps.stdin.flush()
+                self.voice.say(text)
             except OSError:
-                self.ps = None
+                self.voice = None
 
 
 class Engineer:

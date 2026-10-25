@@ -16,6 +16,15 @@ if not exist "%PYW%" (
     exit /b 1
 )
 
+rem Radio voice: Piper neural TTS (separate GPL-3.0 package) and two British male voices
+set "PY=%PYW:pythonw.exe=python.exe%"
+echo Installing the radio voice (one time, about 150 MB)...
+"%PY%" -m pip install --quiet --user piper-tts
+if not exist "%~dp0voices" mkdir "%~dp0voices"
+pushd "%~dp0voices"
+"%PY%" -m piper.download_voices en_GB-alan-medium en_GB-northern_english_male-medium
+popd
+
 rem Auto-start: a shortcut in the Windows Startup folder. The engineer idles until F1 25 sends telemetry.
 powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Startup')+'\F1 25 Race Engineer.lnk'); $s.TargetPath='%PYW%'; $s.Arguments='\"%~dp0app.py\"'; $s.WorkingDirectory='%~dp0'; $s.Save()"
 start "" "%PYW%" "%~dp0app.py"

@@ -21,13 +21,14 @@ import tkinter as tk
 
 import controller
 import engineer
+import voice
 
 PORT = 20777
 CONFIG = os.path.join(engineer.HERE, 'config.json')
 
 
 def load_config():
-    cfg = {'x': None, 'y': 40, 'radio_button': 0}
+    cfg = {'x': None, 'y': 40, 'radio_button': 0, 'voice': voice.DEFAULT_VOICE}
     cfg.update(engineer.load_json(CONFIG))
     return cfg
 
@@ -133,7 +134,8 @@ def main():
         return print(f'Port {PORT} busy: the engineer is already running.')  # also our single-instance guard
 
     overlay = Overlay(cfg)
-    eng = engineer.Engineer(engineer.Radio('--mute' not in args, on_say=overlay.inbox.put))
+    speaker = None if '--mute' in args else voice.make_voice(cfg['voice'])
+    eng = engineer.Engineer(engineer.Radio(speaker, on_say=overlay.inbox.put))
     threading.Thread(target=listen, args=(sock, eng), daemon=True).start()
     if cfg['radio_button']:
         controller.watch(cfg['radio_button'], eng.report)

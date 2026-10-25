@@ -3,7 +3,7 @@
 A lightweight race engineer for EA SPORTS F1 25 on PC. It talks to you over the radio like a real
 race engineer: setup advice in practice, plus gaps, fuel, tyres, pit window and safety car calls in the race.
 
-- **Voice:** uses the Windows built-in voice.
+- **Voice:** a natural British male voice ([Piper](https://github.com/OHF-Voice/piper1-gpl), offline) with a team-radio effect. Falls back to the Windows voice.
 - **Overlay:** a small radio box that pops up over the game while the engineer talks.
 - **Auto-start:** starts with Windows and stays idle (no CPU) until F1 25 sends data.
 - **Optional radio button:** press a controller combo to ask for an update at any time.
@@ -31,6 +31,15 @@ No injection, no memory reading, no file changes to the game.
 3. Set display mode to **Borderless** or **Windowed**. The overlay can't draw over exclusive Fullscreen; the voice works in any mode.
 
 Drag the overlay to move it. Right-click it to quit. To remove the engineer, run `uninstall.bat`.
+
+### Voice
+
+`install.bat` installs Piper and two voices: `en_GB-alan-medium` (default) and
+`en_GB-northern_english_male-medium`. To switch, set `"voice"` in `config.json` to either name,
+or to `"windows"` for the built-in Windows voice. Then restart the engineer.
+Preview a voice: `python voice.py "Box box, box box."`
+
+Piper is GPL-3.0 and runs as a separate program; it is not bundled with or linked into this MIT code.
 
 ### Optional radio button
 
@@ -77,6 +86,7 @@ still works; it just skips the real-world briefing.
 |------|------|
 | `app.py` | Entry point: overlay, telemetry listener, radio button |
 | `engineer.py` | Packet parsing (F1 25 UDP format 2025) and all the advice |
+| `voice.py` | Piper voice + team-radio effect, Windows voice fallback |
 | `controller.py` | Optional read-only controller button reader |
 | `build_track_data.py` | Builds `track_data.json` from FastF1 |
 | `tests/test_engineer.py` | Feeds fake packets through the engineer: `python tests/test_engineer.py` |
