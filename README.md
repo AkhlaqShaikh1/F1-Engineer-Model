@@ -83,6 +83,10 @@ still works; it just skips the real-world briefing.
 
 `tracks.json` (your own bests) and `config.json` (overlay position, radio button) are created on your PC and are not committed.
 
+## License
+
+[MIT](LICENSE)
+
 ## Disclaimer
 
 Unofficial fan project. Not affiliated with or endorsed by Formula 1, the FIA, EA or Codemasters.
