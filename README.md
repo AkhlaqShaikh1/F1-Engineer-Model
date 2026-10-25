@@ -44,7 +44,7 @@ Remove it with `python app.py --unbind`.
 It only advises things you can change in F1 25: the **setup menu** in the garage, and **brake bias,
 differential and ERS mode** on the MFD. Everything else is driving technique.
 
-**Practice:**
+**Practice and time trial** (time trial is the quickest way to test it):
 - a track briefing: downforce level, starting wing range, big braking zones and tyre deg, plus your own best lap and setup from last time;
 - lap time against your best;
 - front vs rear tyre temps: understeer means front wing, front anti-roll bar or off-throttle diff; wheelspin means on-throttle diff or rear wing;

@@ -137,13 +137,11 @@ class Engineer:
         t = self.session_type
         if t is None:
             return None
-        if 1 <= t <= 4 or t == 18:
-            return 'practice'
         if 5 <= t <= 14:
             return 'quali'
         if 15 <= t <= 17:
             return 'race'
-        return 'other'
+        return 'practice'  # practice, time trial (18) and anything unlabelled get setup coaching
 
     def info(self):
         return self.track_data.get(self.track or '')
@@ -271,7 +269,8 @@ class Engineer:
         info = self.info()
         name = (info or {}).get('name') or TRACKS.get(int(self.track), 'this track')
         if mode == 'practice':
-            msg = (f"Radio check. Practice at {name}. Track is {track_temp} degrees. Give me clean laps "
+            label = 'Time trial' if self.session_type == 18 else 'Practice'
+            msg = (f"Radio check. {label} at {name}. Track is {track_temp} degrees. Give me clean laps "
                    "and I'll tell you what to change on the car.")
             if info:
                 msg += (f" {info['downforce'].capitalize()} downforce track, {info['full_throttle_pct']} percent "

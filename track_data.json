@@ -1,0 +1,475 @@
+{
+ "0": {
+  "name": "Melbourne",
+  "season": 2024,
+  "race_laps": 58,
+  "stops": 2,
+  "first_stop_frac": 0.16,
+  "compounds": [
+   "MEDIUM",
+   "HARD",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.038,
+  "deg": "low",
+  "full_throttle_pct": 64,
+  "heavy_brake_zones": 4,
+  "top_speed": 327,
+  "downforce": "medium"
+ },
+ "2": {
+  "name": "Shanghai",
+  "season": 2025,
+  "race_laps": 56,
+  "stops": 1,
+  "first_stop_frac": 0.26,
+  "compounds": [
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.033,
+  "deg": "low",
+  "full_throttle_pct": 49,
+  "heavy_brake_zones": 4,
+  "top_speed": 316,
+  "downforce": "high"
+ },
+ "13": {
+  "name": "Suzuka",
+  "season": 2025,
+  "race_laps": 53,
+  "stops": 1,
+  "first_stop_frac": 0.45,
+  "compounds": [
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.001,
+  "deg": "low",
+  "full_throttle_pct": 59,
+  "heavy_brake_zones": 3,
+  "top_speed": 314,
+  "downforce": "medium"
+ },
+ "3": {
+  "name": "Sakhir",
+  "season": 2025,
+  "race_laps": 57,
+  "stops": 2,
+  "first_stop_frac": 0.22,
+  "compounds": [
+   "SOFT",
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.093,
+  "deg": "medium",
+  "full_throttle_pct": 48,
+  "heavy_brake_zones": 7,
+  "top_speed": 298,
+  "downforce": "high"
+ },
+ "29": {
+  "name": "Jeddah",
+  "season": 2025,
+  "race_laps": 50,
+  "stops": 1,
+  "first_stop_frac": 0.42,
+  "compounds": [
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.014,
+  "deg": "low",
+  "full_throttle_pct": 66,
+  "heavy_brake_zones": 3,
+  "top_speed": 326,
+  "downforce": "medium"
+ },
+ "30": {
+  "name": "Miami",
+  "season": 2024,
+  "race_laps": 57,
+  "stops": 1,
+  "first_stop_frac": 0.44,
+  "compounds": [
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.002,
+  "deg": "low",
+  "full_throttle_pct": 51,
+  "heavy_brake_zones": 3,
+  "top_speed": 321,
+  "downforce": "high"
+ },
+ "27": {
+  "name": "Imola",
+  "season": 2025,
+  "race_laps": 63,
+  "stops": 2,
+  "first_stop_frac": 0.22,
+  "compounds": [
+   "MEDIUM",
+   "HARD",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.041,
+  "deg": "low",
+  "full_throttle_pct": 65,
+  "heavy_brake_zones": 6,
+  "top_speed": 304,
+  "downforce": "medium"
+ },
+ "5": {
+  "name": "Monaco",
+  "season": 2025,
+  "race_laps": 78,
+  "stops": 2,
+  "first_stop_frac": 0.24,
+  "compounds": [
+   "MEDIUM",
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.011,
+  "deg": "low",
+  "full_throttle_pct": 35,
+  "heavy_brake_zones": 4,
+  "top_speed": 288,
+  "downforce": "high"
+ },
+ "4": {
+  "name": "Barcelona",
+  "season": 2025,
+  "race_laps": 66,
+  "stops": 3,
+  "first_stop_frac": 0.23,
+  "compounds": [
+   "SOFT",
+   "MEDIUM",
+   "SOFT",
+   "SOFT"
+  ],
+  "deg_s_per_lap": 0.078,
+  "deg": "medium",
+  "full_throttle_pct": 55,
+  "heavy_brake_zones": 5,
+  "top_speed": 309,
+  "downforce": "medium"
+ },
+ "6": {
+  "name": "Montréal",
+  "season": 2025,
+  "race_laps": 70,
+  "stops": 2,
+  "first_stop_frac": 0.21,
+  "compounds": [
+   "MEDIUM",
+   "HARD",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.032,
+  "deg": "low",
+  "full_throttle_pct": 59,
+  "heavy_brake_zones": 6,
+  "top_speed": 312,
+  "downforce": "medium"
+ },
+ "17": {
+  "name": "Spielberg",
+  "season": 2025,
+  "race_laps": 70,
+  "stops": 2,
+  "first_stop_frac": 0.27,
+  "compounds": [
+   "MEDIUM",
+   "HARD",
+   "MEDIUM"
+  ],
+  "deg_s_per_lap": 0.066,
+  "deg": "medium",
+  "full_throttle_pct": 58,
+  "heavy_brake_zones": 3,
+  "top_speed": 319,
+  "downforce": "medium"
+ },
+ "7": {
+  "name": "Silverstone",
+  "season": 2023,
+  "race_laps": 52,
+  "stops": 1,
+  "first_stop_frac": 0.61,
+  "compounds": [
+   "MEDIUM",
+   "SOFT"
+  ],
+  "deg_s_per_lap": 0.004,
+  "deg": "low",
+  "full_throttle_pct": 65,
+  "heavy_brake_zones": 3,
+  "top_speed": 298,
+  "downforce": "medium"
+ },
+ "10": {
+  "name": "Spa-Francorchamps",
+  "season": 2024,
+  "race_laps": 44,
+  "stops": 2,
+  "first_stop_frac": 0.25,
+  "compounds": [
+   "MEDIUM",
+   "HARD",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.032,
+  "deg": "low",
+  "full_throttle_pct": 68,
+  "heavy_brake_zones": 5,
+  "top_speed": 319,
+  "downforce": "low"
+ },
+ "9": {
+  "name": "Budapest",
+  "season": 2025,
+  "race_laps": 70,
+  "stops": 1,
+  "first_stop_frac": 0.49,
+  "compounds": [
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.03,
+  "deg": "low",
+  "full_throttle_pct": 52,
+  "heavy_brake_zones": 5,
+  "top_speed": 287,
+  "downforce": "high"
+ },
+ "26": {
+  "name": "Zandvoort",
+  "season": 2025,
+  "race_laps": 72,
+  "stops": 2,
+  "first_stop_frac": 0.32,
+  "compounds": [
+   "MEDIUM",
+   "HARD",
+   "SOFT"
+  ],
+  "deg_s_per_lap": 0.036,
+  "deg": "low",
+  "full_throttle_pct": 53,
+  "heavy_brake_zones": 3,
+  "top_speed": 299,
+  "downforce": "high"
+ },
+ "11": {
+  "name": "Monza",
+  "season": 2025,
+  "race_laps": 53,
+  "stops": 1,
+  "first_stop_frac": 0.62,
+  "compounds": [
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.0,
+  "deg": "low",
+  "full_throttle_pct": 75,
+  "heavy_brake_zones": 4,
+  "top_speed": 336,
+  "downforce": "low"
+ },
+ "20": {
+  "name": "Baku",
+  "season": 2025,
+  "race_laps": 51,
+  "stops": 1,
+  "first_stop_frac": 0.56,
+  "compounds": [
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.0,
+  "deg": "low",
+  "full_throttle_pct": 59,
+  "heavy_brake_zones": 7,
+  "top_speed": 324,
+  "downforce": "medium"
+ },
+ "12": {
+  "name": "Marina Bay",
+  "season": 2025,
+  "race_laps": 62,
+  "stops": 1,
+  "first_stop_frac": 0.4,
+  "compounds": [
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.0,
+  "deg": "low",
+  "full_throttle_pct": 48,
+  "heavy_brake_zones": 8,
+  "top_speed": 295,
+  "downforce": "high"
+ },
+ "15": {
+  "name": "Austin",
+  "season": 2025,
+  "race_laps": 56,
+  "stops": 1,
+  "first_stop_frac": 0.54,
+  "compounds": [
+   "MEDIUM",
+   "SOFT"
+  ],
+  "deg_s_per_lap": 0.026,
+  "deg": "low",
+  "full_throttle_pct": 52,
+  "heavy_brake_zones": 5,
+  "top_speed": 311,
+  "downforce": "high"
+ },
+ "19": {
+  "name": "Mexico City",
+  "season": 2025,
+  "race_laps": 71,
+  "stops": 1,
+  "first_stop_frac": 0.49,
+  "compounds": [
+   "MEDIUM",
+   "SOFT"
+  ],
+  "deg_s_per_lap": 0.05,
+  "deg": "medium",
+  "full_throttle_pct": 41,
+  "heavy_brake_zones": 3,
+  "top_speed": 330,
+  "downforce": "high"
+ },
+ "16": {
+  "name": "São Paulo",
+  "season": 2025,
+  "race_laps": 71,
+  "stops": 2,
+  "first_stop_frac": 0.39,
+  "compounds": [
+   "MEDIUM",
+   "SOFT",
+   "MEDIUM"
+  ],
+  "deg_s_per_lap": 0.083,
+  "deg": "medium",
+  "full_throttle_pct": 51,
+  "heavy_brake_zones": 5,
+  "top_speed": 331,
+  "downforce": "high"
+ },
+ "31": {
+  "name": "Las Vegas",
+  "season": 2025,
+  "race_laps": 50,
+  "stops": 1,
+  "first_stop_frac": 0.44,
+  "compounds": [
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.0,
+  "deg": "low",
+  "full_throttle_pct": 68,
+  "heavy_brake_zones": 5,
+  "top_speed": 338,
+  "downforce": "low"
+ },
+ "32": {
+  "name": "Lusail",
+  "season": 2025,
+  "race_laps": 57,
+  "stops": 2,
+  "first_stop_frac": 0.12,
+  "compounds": [
+   "MEDIUM",
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.0,
+  "deg": "low",
+  "full_throttle_pct": 59,
+  "heavy_brake_zones": 3,
+  "top_speed": 310,
+  "downforce": "medium"
+ },
+ "14": {
+  "name": "Yas Island",
+  "season": 2025,
+  "race_laps": 58,
+  "stops": 1,
+  "first_stop_frac": 0.33,
+  "compounds": [
+   "MEDIUM",
+   "HARD"
+  ],
+  "deg_s_per_lap": 0.043,
+  "deg": "low",
+  "full_throttle_pct": 61,
+  "heavy_brake_zones": 4,
+  "top_speed": 310,
+  "downforce": "medium"
+ },
+ "39": {
+  "name": "Silverstone reverse",
+  "season": 2023,
+  "race_laps": 52,
+  "stops": 1,
+  "first_stop_frac": 0.61,
+  "compounds": [
+   "MEDIUM",
+   "SOFT"
+  ],
+  "deg_s_per_lap": 0.004,
+  "deg": "low",
+  "full_throttle_pct": 65,
+  "heavy_brake_zones": 3,
+  "top_speed": 298,
+  "downforce": "medium"
+ },
+ "40": {
+  "name": "Spielberg reverse",
+  "season": 2025,
+  "race_laps": 70,
+  "stops": 2,
+  "first_stop_frac": 0.27,
+  "compounds": [
+   "MEDIUM",
+   "HARD",
+   "MEDIUM"
+  ],
+  "deg_s_per_lap": 0.066,
+  "deg": "medium",
+  "full_throttle_pct": 58,
+  "heavy_brake_zones": 3,
+  "top_speed": 319,
+  "downforce": "medium"
+ },
+ "41": {
+  "name": "Zandvoort reverse",
+  "season": 2025,
+  "race_laps": 72,
+  "stops": 2,
+  "first_stop_frac": 0.32,
+  "compounds": [
+   "MEDIUM",
+   "HARD",
+   "SOFT"
+  ],
+  "deg_s_per_lap": 0.036,
+  "deg": "low",
+  "full_throttle_pct": 53,
+  "heavy_brake_zones": 3,
+  "top_speed": 299,
+  "downforce": "high"
+ }
+}

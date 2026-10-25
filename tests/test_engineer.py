@@ -88,6 +88,12 @@ eng.handle(session(1, uid=99))
 print('\n'.join(said)); print('---')
 has('Last time here your best was 1 30.9')
 
+# Time trial gets the same coaching and recalls the same track memory
+said.clear()
+eng.handle(session(18, uid=100))
+has('Time trial at Silverstone')
+has('Last time here your best was 1 30.9')
+
 # Race
 said.clear()
 for p in [session(15, laps=10), status(-0.5, ers=0.5e6), damage(56, wing=30), lap(1, 0, pos=3)]:
