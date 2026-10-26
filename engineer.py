@@ -15,6 +15,7 @@ import threading
 import time
 
 import coach
+import session_report
 
 CARS = 22
 HEADER = struct.Struct('<HBBBBBQfIIBB')                 # 29 bytes
@@ -52,6 +53,11 @@ TRACK_DATA = os.path.join(HERE, 'track_data.json')  # real race data, built by b
 LOCK_SLIP = 0.15   # shortcut: slip thresholds are first guesses, tune from real laps
 SPIN_SLIP = 0.15
 LIVE_LOSS = 0.15   # seconds a corner must be heading to lose before the live call
+FUEL_S_PER_KG = 0.03  # shortcut: textbook fuel effect, upgrade to fitting it from your laps
+MISTAKE = 1.5         # seconds over the stint's median lap: a mistake or traffic, not tyre deg
+PIT_LOSS = 22.0      # shortcut: one pit loss for every track, upgrade to per-track values in track_data.json
+COMPOUND_GRIP = {16: 0.0, 17: 0.5, 18: 1.0}  # visual compound: soft, medium, hard
+WET_COMPOUNDS = (7, 8)                        # inter, wet
 
 
 def load_json(path):
@@ -217,6 +223,14 @@ class Engineer:
         self.lnc_done = set()
         self.coach = None         # live corner predictor (coach.py), only when PyTorch is installed
         self.live_done = set()
+        self.gains = {}           # corner -> best time gained there against the reference lap, for the theoretical best
+        self.theo_said = None
+        self.stint = []           # race laps on this set of tyres: (tyre age, lap ms, fuel kg)
+        self.deg = None           # your tyre deg, seconds per lap, fitted from the stint
+        self.own_window = None    # best pit lap from your own deg; 0 = no stop needed
+        self.sc = False
+        self.laps_log = []        # per lap, for the session report
+        self.started = time.strftime('%Y-%m-%d_%H%M')
         self.setup_best = {}
         self.compare_to = None
         self.wear_called = set()
@@ -244,6 +258,10 @@ class Engineer:
         return self.track_data.get(self.track or '')
 
     def pit_window(self):
+        if self.own_window is not None:
+            return self.own_window or None
+        if self.cars and self.cars[self.me][16]:
+            return None  # already stopped: the real-race window is behind us
         info = self.info()
         if not info or not info.get('stops') or not self.total_laps:
             return None
@@ -379,7 +397,7 @@ class Engineer:
             self.lap_done(mine, cars)
         if lap_num != self.lap:
             self.lap = lap_num
-            self.skip_lap = mine[15] != 0
+            self.skip_lap = mine[15] != 0 or self.sc
             self.clear_samples()
             self.lnc_done = set()
             self.live_done = set()
@@ -407,6 +425,8 @@ class Engineer:
             self.skip_lap = True  # a flashback lap is not a fair corner comparison
         elif code == b'SCAR':
             name, ev = SAFETY_CAR.get(data[33], 'Safety car'), data[34]
+            self.sc = ev in (0, 1)
+            self.skip_lap = True  # a safety car lap says nothing about your tyres
             if ev == 0:
                 self.say(f"{name}. Slow down, keep the delta positive, keep tyre temps up.")
                 window = self.pit_window()
@@ -474,6 +494,8 @@ class Engineer:
             self.setup_tips = self.garage_advice(temps)
         if mode == 'race':
             self.race_call(mine, cars, temps)
+        if self.laps_log:
+            session_report.write(self)
 
     def lap_call(self, ms, lap):
         parts = [lap_words(ms) + ("." if self.best is None else
@@ -482,9 +504,19 @@ class Engineer:
             comp = compare(lap, self.ref)
             self.learn_habits(comp)
             if self.coach and self.track_len:
-                self.coach.add_lap(lap, self.ref['zones'], self.track_len)
+                self.coach.add_lap(lap, self.ref['zones'], self.track_len, self.car_state())
+            for loss, rz, _, _ in comp:
+                name = self.corner(rz['apex'])
+                self.gains[name] = min(self.gains.get(name, 0.0), loss)
+            theo = self.theoretical()
+            if theo and self.ref_best - theo[0] >= 300 and (not self.theo_said or self.theo_said - theo[0] >= 100):
+                self.theo_said = theo[0]
+                parts.append(f"Theoretical best {lap_words(theo[0])}, time left in {' and '.join(theo[1])}.")
+            self.laps_log.append({'lap': self.lap, 'ms': ms, 'losses': {self.corner(c[1]['apex']): round(c[0], 2)
+                                                                           for c in comp}})
             parts += self.corner_calls(comp, lap)
         elif lap:
+            self.laps_log.append({'lap': self.lap, 'ms': ms, 'losses': {}})
             parts += self.mfd_calls(lap)
         if self.setup and self.compare_to:
             d = (self.compare_to - ms) / 1000
@@ -496,6 +528,7 @@ class Engineer:
             self.best = ms
         if lap and (self.ref_best is None or ms < self.ref_best):
             self.ref, self.ref_best = lap, ms
+            self.gains, self.theo_said = {}, None  # gains were measured against the old reference
             mem = self.memory()
             if not mem.get('best') or ms < mem['best']:
                 if mem.get('best'):
@@ -573,29 +606,90 @@ class Engineer:
                 self.lnc_done.add(i)
                 self.say(f"Lift and coast into {self.corner(z['apex'])}, {self.lnc_reason}.")
 
+    def car_state(self):
+        """What changes lap time but isn't your driving: fuel 0-1, tyre wear 0-1, compound grip, wet."""
+        st = self.status
+        compound = st[14] if st else 17
+        wet = compound in WET_COMPOUNDS or (self.weather or 0) >= 3
+        return (st[5] / 110 if st else 0.5, max(self.wear) / 100 if self.wear else 0.0,
+                COMPOUND_GRIP.get(compound, 0.5), 1.0 if wet else 0.0)
+
+    def theoretical(self):
+        """(reference lap ms plus your best gain in every corner, the two corners with the most left in them)."""
+        if not self.ref_best or not self.gains:
+            return None
+        gains = sorted(self.gains.items(), key=lambda g: g[1])
+        return self.ref_best + sum(g for _, g in gains) * 1000, [n for n, g in gains[:2] if g <= -0.05]
+
     def live_corner(self):
-        """At the apex, the coach net predicts your corner exit time; call it if the corner is going slow."""
+        """At the apex the coach net predicts your corner exit time, and what you usually do from the
+        corner entry in this car state (fuel, tyres, wet). Call it if this corner is going slower."""
         if not self.trace or not self.track_len:
             return
         d, t, speed, thr, brk = self.trace[-1][:5]
+        state = self.car_state()
         for i, z in enumerate(self.ref['zones']):
             if i in self.live_done or not z['apex'] <= d < z['apex'] + 30:
                 continue
             self.live_done.add(i)
             a, b = z['brake'] - 60, z['power'] + 60
-            left = self.coach.predict(d / self.track_len, b - d, speed, thr, brk)
-            entry = next((s[1] for s in reversed(self.trace) if s[0] <= a), None)
+            entry = next((s for s in reversed(self.trace) if s[0] <= a), None)
+            left = self.coach.predict(d / self.track_len, b - d, speed, thr, brk, state)
             if left is None or entry is None:
                 continue
-            loss = (t + left * 1000 - entry - (time_at(self.ref, b) - time_at(self.ref, a))) / 1000
+            usual = self.coach.predict(entry[0] / self.track_len, b - entry[0], *entry[2:5], state)
+            loss = (t - entry[1]) / 1000 + left - usual
             if loss >= LIVE_LOSS:
                 self.say(f"{self.corner(z['apex']).capitalize()}, losing {loss:.1f}.")
+
+    def tyre_strategy(self, mine, laps_left):
+        """Fit your tyre deg from this stint and find the pit lap with the least total time. Returns a call or None."""
+        st = self.status
+        if not st or not mine[0]:
+            return None
+        age, fuel = st[15], st[5]
+        if self.stint and age < self.stint[-1][0]:
+            self.stint, self.deg, self.own_window = [], None, None  # new tyres
+        if not self.skip_lap and mine[14] > 2:  # mine[14] is already the next lap; skip the standing start
+            self.stint.append((age, mine[0], fuel))
+        laps = [(s[0], (s[1] - FUEL_S_PER_KG * 1000 * s[2]) / 1000) for s in self.stint]  # fuel taken out
+        median = sorted(y for _, y in laps)[len(laps) // 2] if laps else 0
+        laps = [(x, y) for x, y in laps if y - median < MISTAKE]
+        if len(laps) < 4:
+            return None
+        mx, my = sum(x for x, _ in laps) / len(laps), sum(y for _, y in laps) / len(laps)
+        var = sum((x - mx) ** 2 for x, _ in laps)
+        if not var:
+            return None
+        self.deg = max(0.0, sum((x - mx) * (y - my) for x, y in laps) / var)
+        if laps_left < 3:
+            return None
+
+        def stint_cost(start_age, laps):  # time lost to deg over a stint, against brand new tyres
+            return self.deg * sum(start_age + k for k in range(1, laps + 1))
+
+        options = {p: stint_cost(age, p) + PIT_LOSS + stint_cost(0, laps_left - p) for p in range(laps_left)}
+        if mine[16] or (self.weather or 0) >= 3:  # already stopped, or wet: no mandatory second compound
+            options[None] = stint_cost(age, laps_left)
+        best = min(options, key=options.get)
+        window = 0 if best is None else mine[14] + best
+        old, self.own_window = self.own_window, window
+        if old is not None and (window == old or (window and old and abs(window - old) < 2)):
+            return None
+        if not window:
+            return f"Your tyres are losing {self.deg:.2f} a lap. No need to stop."
+        return f"Your tyres are losing {self.deg:.2f} a lap. Best stop around lap {window}."
 
     def race_call(self, mine, cars, temps):
         pos, ahead, behind = self.gaps(mine, cars)
         lap = mine[14]
         laps_left = self.total_laps - lap + 1
         parts = [f"P{pos}."]
+        if mine[0]:
+            self.laps_log.append({'lap': lap - 1, 'ms': mine[0], 'losses': {}})
+        strategy = self.tyre_strategy(mine, laps_left)
+        if strategy:
+            parts.append(strategy)
         if ahead is not None:
             parts.append(f"Gap ahead {ahead:.1f}.")
         if behind is not None:
@@ -636,9 +730,11 @@ class Engineer:
                     parts.append(msg.format(w=round(w)))
                     break
         window = self.pit_window()
-        if window and mine[16] == 0:
+        if window and (mine[16] == 0 or self.own_window):
             if lap == window - 2:
                 parts.append(f"Pit window in 2 laps, around lap {window}.")
+            elif lap == window and self.own_window:  # your own deg says this lap: a clear call, first
+                parts.insert(0, "Box, box. Pit this lap.")
             elif lap == window:
                 parts.append("In the pit window. Box when the tyres drop.")
         if laps_left == 1:
@@ -674,6 +770,9 @@ class Engineer:
             msg = "Copy."
             if self.best:
                 msg += f" Best {lap_words(self.best)}."
+            theo = self.theoretical()
+            if theo and theo[1]:
+                msg += f" Theoretical {lap_words(theo[0])}."
             if self.last_tip:
                 msg += " " + self.last_tip
             if self.setup_tips and (self.in_garage or self.paused):
@@ -681,3 +780,32 @@ class Engineer:
             self.say(msg if msg != "Copy." else "Copy. Give me a clean lap first.")
         else:
             self.say("Radio check, loud and clear.")
+
+    def answer(self, text):
+        """Talk-back: answer a spoken question (see talkback.py) by keywords. Anything else gets the usual update."""
+        t = text.lower()
+        st, parts = self.status, []
+        if any(w in t for w in ('tyre', 'tire', 'wear', 'deg')) and self.wear:
+            parts.append(f"Tyres {max(self.wear):.0f} percent" +
+                         (f", losing {self.deg:.2f} a lap." if self.deg is not None else "."))
+        if any(w in t for w in ('gap', 'ahead', 'behind', 'position')) and self.cars and self.mode() == 'race':
+            pos, ahead, behind = self.gaps(self.cars[self.me], self.cars)
+            parts.append(f"P{pos}." + (f" Ahead {ahead:.1f}." if ahead is not None else "") +
+                         (f" Behind {behind:.1f}." if behind is not None else ""))
+        if 'fuel' in t and st:
+            parts.append(f"Fuel {st[7]:+.1f} laps.")
+        if any(w in t for w in ('battery', 'ers', 'deploy')) and st:
+            parts.append(f"Battery {st[19] / ERS_MAX * 100:.0f} percent.")
+        if any(w in t for w in ('pit', 'box', 'stop', 'strategy')):
+            window = self.pit_window()
+            parts.append(f"Box around lap {window}." if window else "No stop planned.")
+        if any(w in t for w in ('best', 'lap time', 'theoretical', 'pace')):
+            theo = self.theoretical()
+            parts.append((f"Best {lap_words(self.best)}." if self.best else "No clean lap yet.") +
+                         (f" Theoretical {lap_words(theo[0])}." if theo and theo[1] else ""))
+        if any(w in t for w in ('weather', 'rain', 'wet')) and self.weather is not None:
+            parts.append(f"Weather {WEATHER[min(self.weather, len(WEATHER) - 1)]}.")
+        if parts:
+            self.say("Copy. " + " ".join(parts))
+        else:
+            self.report()

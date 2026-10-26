@@ -21,6 +21,7 @@ import tkinter as tk
 
 import controller
 import engineer
+import talkback
 import voice
 
 PORT = 20777
@@ -124,8 +125,8 @@ def main():
         cfg['radio_button'] = 0
         save_config(cfg)
         return print('Radio button removed.')
-    if sys.stdout is None:  # pythonw has no console; print() must not crash
-        sys.stdout = sys.stderr = open(os.devnull, 'w')
+    if sys.stdout is None:  # pythonw has no console: log every radio call to engineer.log, fresh each start
+        sys.stdout = sys.stderr = open(os.path.join(engineer.HERE, 'engineer.log'), 'w', encoding='utf-8', buffering=1)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -137,7 +138,10 @@ def main():
     speaker = None if '--mute' in args else voice.make_voice(cfg['voice'])
     eng = engineer.Engineer(engineer.Radio(speaker, on_say=overlay.inbox.put))
     threading.Thread(target=listen, args=(sock, eng), daemon=True).start()
-    if cfg['radio_button']:
+    if cfg['radio_button'] and talkback.whisper:
+        ears = talkback.Ears(eng.answer, eng.report)
+        controller.watch(cfg['radio_button'], ears.press, ears.release)
+    elif cfg['radio_button']:
         controller.watch(cfg['radio_button'], eng.report)
     print(f'Race engineer listening on UDP {PORT}.')
     overlay.root.mainloop()

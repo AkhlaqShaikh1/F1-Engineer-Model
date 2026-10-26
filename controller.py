@@ -81,14 +81,18 @@ def capture(hold=1.5):
         time.sleep(0.03)
 
 
-def watch(combo, on_press):
-    """Background thread: calls on_press once each time the full combo goes down."""
+def watch(combo, on_press, on_release=None):
+    """Background thread: calls on_press once each time the full combo goes down,
+    and on_release(seconds held) when it comes back up."""
     def loop():
-        down = False
+        down, since = False, 0.0
         while True:
             now = pressed() & combo == combo
             if now and not down:
+                since = time.monotonic()
                 on_press()
+            elif down and not now and on_release:
+                on_release(time.monotonic() - since)
             down = now
             time.sleep(0.03)
     threading.Thread(target=loop, daemon=True).start()

@@ -1,7 +1,8 @@
 """Optional live corner predictor: a small neural net that learns your clean laps, on your GPU if PyTorch sees one.
 
-From your position, speed and pedals mid-corner it predicts the time left to the corner exit, so the
-engineer can call a slow corner while you are still in it. One model per track, kept in models/.
+From your position, speed and pedals mid-corner, plus the car's state (fuel, tyre wear, compound,
+wet), it predicts the time left to the corner exit, so the engineer can call a corner that is going
+slower than your usual for that car state while you are still in it. One model per track, kept in models/.
 Needs PyTorch (pip install torch). Without it the engineer works exactly as before.
 """
 import os
@@ -18,12 +19,16 @@ MIN_LAPS = 5        # laps of data before it trains and starts making live calls
 MAX_ROWS = 50000    # shortcut: keeps only the newest rows, upgrade to sampling across sessions if old laps matter
 
 
-def features(frac, to_exit, speed, throttle, brake):
-    return [frac, to_exit / 1000, speed / 300, throttle, brake]
+def features(frac, to_exit, speed, throttle, brake, state):
+    """state: (fuel 0-1, tyre wear 0-1, compound grip 0 soft to 1 hard, wet 0 or 1), see Engineer.car_state."""
+    return [frac, to_exit / 1000, speed / 300, throttle, brake, *state]
+
+
+N_FEATURES = len(features(0, 0, 0, 0, 0, (0, 0, 0, 0)))
 
 
 def build():
-    return torch.nn.Sequential(torch.nn.Linear(5, 64), torch.nn.ReLU(), torch.nn.Linear(64, 64),
+    return torch.nn.Sequential(torch.nn.Linear(N_FEATURES, 64), torch.nn.ReLU(), torch.nn.Linear(64, 64),
                                torch.nn.ReLU(), torch.nn.Linear(64, 1))
 
 
@@ -37,13 +42,15 @@ class Coach:
             saved = torch.load(self.path, weights_only=True)
         except Exception:  # no model yet, or a corrupt file: start fresh
             return
+        if saved['x'].shape[1] != N_FEATURES:
+            return  # saved by an older version with other inputs: start fresh
         self.x, self.y, self.laps = saved['x'].tolist(), saved['y'].tolist(), saved['laps']
         if saved.get('net'):
             self.net = build()
             self.net.load_state_dict(saved['net'])
             self.net.eval()
 
-    def add_lap(self, lap, zones, track_len):
+    def add_lap(self, lap, zones, track_len, state):
         """Rows from one clean lap: in each corner, (state now) -> seconds to the corner exit."""
         from engineer import time_at
         for z in zones:
@@ -51,7 +58,7 @@ class Coach:
             tb = time_at(lap, b)
             for s in lap['trace']:
                 if a <= s[0] < b:
-                    self.x.append(features(s[0] / track_len, b - s[0], s[2], s[3], s[4]))
+                    self.x.append(features(s[0] / track_len, b - s[0], s[2], s[3], s[4], state))
                     self.y.append((tb - s[1]) / 1000)
         self.x, self.y = self.x[-MAX_ROWS:], self.y[-MAX_ROWS:]
         self.laps += 1
@@ -79,10 +86,10 @@ class Coach:
         finally:
             self.busy = False
 
-    def predict(self, frac, to_exit, speed, throttle, brake):
+    def predict(self, frac, to_exit, speed, throttle, brake, state):
         """Seconds left to the corner exit, or None until the first training run is done."""
         net = self.net
         if net is None:
             return None
         with torch.no_grad():
-            return net(torch.tensor([features(frac, to_exit, speed, throttle, brake)])).item()
+            return net(torch.tensor([features(frac, to_exit, speed, throttle, brake, state)])).item()

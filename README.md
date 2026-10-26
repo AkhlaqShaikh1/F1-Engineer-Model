@@ -48,6 +48,11 @@ nothing in F1 25. Works with Xbox pads, and with DualSense either through Steam 
 plain HID controller. Press the combo during a session and the engineer reads out your current state.
 Remove it with `python app.py --unbind`.
 
+**Talk-back (optional).** With `pip install openai-whisper sounddevice`, hold the radio button, ask a
+question into your headset mic, and let go: "how are the tyres?", "what's the gap?", "when do we box?",
+"fuel?", "battery?", "best lap?", "weather?". Speech to text runs locally with Whisper, on the GPU when
+PyTorch sees one. A quick tap still gives the usual update.
+
 ## What it tells you
 
 It only advises things you can change in F1 25: the **setup menu** in the garage, and **brake bias,
@@ -71,8 +76,17 @@ Repeated mistakes get called: "that's 3 laps in a row".
 
 **Live corner coach (optional, needs PyTorch).** A small neural net per track learns your clean laps
 on your PC. After 5 laps of data it trains in the background (on the GPU when PyTorch sees one) and
-retrains after every clean lap. At each apex it predicts your corner exit time from your speed and
-pedals, and calls a slow corner while you are still in it: "Turn 7, losing 0.3." Models are kept in `models/`.
+retrains after every clean lap. At each apex it predicts your corner exit time from your speed, pedals
+and the car's state (fuel, tyre wear, compound, wet), compares it with what you usually do from that corner
+entry in that state, and calls a slow corner while you are still in it: "Turn 7, losing 0.3."
+So heavy fuel or old tyres don't get blamed on you. Models are kept in `models/`.
+
+**Theoretical best.** Your best lap plus your best time in every corner: "Theoretical best 1 21.9, time
+left in turn 1 and turn 11."
+
+**Session report.** After every lap the engineer rewrites a page in `reports/` for that session: lap
+times, time lost or gained per corner against your best lap, theoretical best, habits, and tyre deg in a race.
+Open it in a browser between stints.
 
 GPU PyTorch for an AMD RX 9060 XT (gfx1200) on Windows, from
 [AMD's ROCm PyTorch page](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/frameworks/pytorch/install.html):
@@ -86,7 +100,7 @@ NVIDIA cards: the CUDA build from pytorch.org. No GPU: `pip install torch` runs 
 The engineer log prints `coach trained on cuda` (ROCm also reports as cuda) or `on cpu`.
 
 **Race:**
-- the real-race strategy for that track, scaled to your race length (pit window lap);
+- the real-race strategy for that track, scaled to your race length (pit window lap), replaced by your own once it has 4 laps of your tyre deg: "Your tyres are losing 0.12 a lap. Best stop around lap 23.";
 - position and gaps every lap, plus DRS range;
 - fuel plus or minus, battery, and tyre wear;
 - live "lift and coast into turn X" before the two biggest stops when fuel, brakes or tyres need saving;
@@ -94,6 +108,22 @@ The engineer log prints `coach trained on cuda` (ROCm also reports as cuda) or `
 - safety car (including a cheap pit stop call), penalties, front wing damage, weather, and the last lap.
 
 Corner numbers are the official ones, placed using real F1 track data.
+
+## Race simulator
+
+Test the race calls without driving a race. `simulate.py` drives a fake race through the engineer in
+seconds: tyre deg, fuel burn, lap-time noise, mistakes, a safety car, and a driver who boxes when told.
+Every radio call is logged, and the stop is graded against the best stop for the true deg.
+
+```
+python simulate.py                                       18 laps at Monza, safety car on lap 11
+python simulate.py --laps 30 --deg 0.15 --sc 0 --seed 4  other race, other luck
+python simulate.py --ask "8:when should we pit"          a driver question on lap 8
+python simulate.py --live --speed 10                     into the running engineer: hear it, ask on the radio button
+```
+
+Logs and report pages go to `reports/sim/`. The running engineer logs its own calls, and what
+talk-back heard, to `engineer.log`.
 
 ## Real-world track data
 
@@ -116,6 +146,10 @@ still works; it just skips the real-world briefing.
 | `engineer.py` | Packet parsing (F1 25 UDP format 2025) and all the advice |
 | `voice.py` | Piper voice + team-radio effect, Windows voice fallback |
 | `coach.py` | Optional live corner predictor (PyTorch) |
+| `talkback.py` | Optional talk-back: push to talk, Whisper speech to text |
+| `session_report.py` | Session report pages in `reports/` |
+| `simulate.py` | Race simulator with logging |
+| `fakegame.py` | Fake F1 25 packets for the tests and the simulator |
 | `controller.py` | Optional read-only controller button reader |
 | `build_track_data.py` | Builds `track_data.json` from FastF1 |
 | `tests/test_engineer.py` | Feeds fake packets through the engineer: `python tests/test_engineer.py` |

@@ -5,3 +5,5 @@ config.json
 build.log
 voices/
 models/
+reports/
+engineer.log
