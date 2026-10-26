@@ -14,6 +14,8 @@ import struct
 import threading
 import time
 
+import coach
+
 CARS = 22
 HEADER = struct.Struct('<HBBBBBQfIIBB')                 # 29 bytes
 SESSION = struct.Struct('<BbbBHBbBHHBB')                # first fields of the session packet only
@@ -49,6 +51,7 @@ TRACK_DATA = os.path.join(HERE, 'track_data.json')  # real race data, built by b
 # trace sample: (lap distance m, lap time ms, speed kph, throttle 0-1, brake 0-1, front lock, rear spin)
 LOCK_SLIP = 0.15   # shortcut: slip thresholds are first guesses, tune from real laps
 SPIN_SLIP = 0.15
+LIVE_LOSS = 0.15   # seconds a corner must be heading to lose before the live call
 
 
 def load_json(path):
@@ -212,6 +215,8 @@ class Engineer:
         self.last_lap = None      # last completed lap, for lift and coast points in the race
         self.lnc_reason = None
         self.lnc_done = set()
+        self.coach = None         # live corner predictor (coach.py), only when PyTorch is installed
+        self.live_done = set()
         self.setup_best = {}
         self.compare_to = None
         self.wear_called = set()
@@ -310,6 +315,8 @@ class Engineer:
             self.give_setup_tips()
         self.paused = paused
         if first:
+            if coach.torch:
+                self.coach = coach.Coach(self.track)
             self.briefing(track_temp)
         if self.weather is not None and weather != self.weather and weather < len(WEATHER):
             msg = f"Weather changing to {WEATHER[weather]}."
@@ -375,6 +382,7 @@ class Engineer:
             self.skip_lap = mine[15] != 0
             self.clear_samples()
             self.lnc_done = set()
+            self.live_done = set()
         if mine[15] != 0 or mine[18]:  # in pit lane, or lap invalid
             self.skip_lap = True
         self.dist, self.lap_ms = mine[10], mine[1]
@@ -384,6 +392,8 @@ class Engineer:
         self.in_garage = garage
         if self.mode() == 'race':
             self.lift_and_coast()
+        elif self.coach and self.ref and not self.skip_lap:
+            self.live_corner()
 
     def on_event(self, data, me):
         code = data[29:33]
@@ -471,6 +481,8 @@ class Engineer:
         if lap and self.ref:
             comp = compare(lap, self.ref)
             self.learn_habits(comp)
+            if self.coach and self.track_len:
+                self.coach.add_lap(lap, self.ref['zones'], self.track_len)
             parts += self.corner_calls(comp, lap)
         elif lap:
             parts += self.mfd_calls(lap)
@@ -560,6 +572,24 @@ class Engineer:
             if i not in self.lnc_done and z['brake'] - 300 <= self.dist <= z['brake'] - 150:
                 self.lnc_done.add(i)
                 self.say(f"Lift and coast into {self.corner(z['apex'])}, {self.lnc_reason}.")
+
+    def live_corner(self):
+        """At the apex, the coach net predicts your corner exit time; call it if the corner is going slow."""
+        if not self.trace or not self.track_len:
+            return
+        d, t, speed, thr, brk = self.trace[-1][:5]
+        for i, z in enumerate(self.ref['zones']):
+            if i in self.live_done or not z['apex'] <= d < z['apex'] + 30:
+                continue
+            self.live_done.add(i)
+            a, b = z['brake'] - 60, z['power'] + 60
+            left = self.coach.predict(d / self.track_len, b - d, speed, thr, brk)
+            entry = next((s[1] for s in reversed(self.trace) if s[0] <= a), None)
+            if left is None or entry is None:
+                continue
+            loss = (t + left * 1000 - entry - (time_at(self.ref, b) - time_at(self.ref, a))) / 1000
+            if loss >= LIVE_LOSS:
+                self.say(f"{self.corner(z['apex']).capitalize()}, losing {loss:.1f}.")
 
     def race_call(self, mine, cars, temps):
         pos, ahead, behind = self.gaps(mine, cars)

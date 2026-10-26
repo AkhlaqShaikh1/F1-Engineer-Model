@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 import engineer as e
 
 e.MEMORY = os.path.join(tempfile.mkdtemp(), 'tracks.json')
+e.coach.MODELS = tempfile.mkdtemp()
 said = []
 TRACK = {'7': {'name': 'Silverstone', 'race_laps': 52, 'stops': 1, 'first_stop_frac': 0.4,
                'compounds': ['MEDIUM', 'HARD'], 'deg_s_per_lap': 0.12, 'deg': 'high',
@@ -151,4 +152,23 @@ has('Near the pit window')
 has('In the pit window')
 has('Copy. P3. Ahead 0.8')
 assert not any('mix' in s for s in said), 'fuel mix is not a confirmed F1 25 control'
+
+# ---- Live corner coach (only with PyTorch): learns clean laps, then calls a slow corner at the apex ----
+if e.coach.torch:
+    import time
+    said.clear()
+    eng = new_engineer()
+    for p in [session(18), lap_pkt(1)]:
+        eng.handle(p)
+    t = 0
+    for n in range(1, e.coach.MIN_LAPS + 2):  # reference lap, then MIN_LAPS laps of data
+        t = drive(eng, n, t)
+    eng.handle(lap_pkt(e.coach.MIN_LAPS + 2, t))
+    while eng.coach.busy or eng.coach.net is None:
+        time.sleep(0.1)
+    assert not any('losing' in s for s in said), 'no live call on clean laps'
+    drive(eng, e.coach.MIN_LAPS + 2, t, early=80)
+    print('\n'.join(said))
+    has('Turn 7, losing')
+    assert sum('losing' in s for s in said) == 1, 'only the slow corner'
 print('ALL OK')

@@ -69,6 +69,22 @@ often you brake early, lock up, spin the rears or get on the power late at each 
 session coaches you against your all-time best from lap 1 and opens with your weakest corner.
 Repeated mistakes get called: "that's 3 laps in a row".
 
+**Live corner coach (optional, needs PyTorch).** A small neural net per track learns your clean laps
+on your PC. After 5 laps of data it trains in the background (on the GPU when PyTorch sees one) and
+retrains after every clean lap. At each apex it predicts your corner exit time from your speed and
+pedals, and calls a slow corner while you are still in it: "Turn 7, losing 0.3." Models are kept in `models/`.
+
+GPU PyTorch for an AMD RX 9060 XT (gfx1200) on Windows, from
+[AMD's ROCm PyTorch page](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/frameworks/pytorch/install.html):
+
+```
+python -m pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ "torch[device-gfx1200]==2.14.0+rocm10.1.0"
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+NVIDIA cards: the CUDA build from pytorch.org. No GPU: `pip install torch` runs it on the CPU, which is fast enough.
+The engineer log prints `coach trained on cuda` (ROCm also reports as cuda) or `on cpu`.
+
 **Race:**
 - the real-race strategy for that track, scaled to your race length (pit window lap);
 - position and gaps every lap, plus DRS range;
@@ -99,6 +115,7 @@ still works; it just skips the real-world briefing.
 | `app.py` | Entry point: overlay, telemetry listener, radio button |
 | `engineer.py` | Packet parsing (F1 25 UDP format 2025) and all the advice |
 | `voice.py` | Piper voice + team-radio effect, Windows voice fallback |
+| `coach.py` | Optional live corner predictor (PyTorch) |
 | `controller.py` | Optional read-only controller button reader |
 | `build_track_data.py` | Builds `track_data.json` from FastF1 |
 | `tests/test_engineer.py` | Feeds fake packets through the engineer: `python tests/test_engineer.py` |
