@@ -1,6 +1,6 @@
 """F1 25 Race Engineer: voice + on-screen radio overlay.
 
-    pythonw app.py            run with no console (what the auto-start shortcut does)
+    pythonw app.py            run with no console (what launch.py does when Steam starts F1 25)
     python app.py             run with a console log
     python app.py --bind      set the controller radio button
     python app.py --unbind    remove it

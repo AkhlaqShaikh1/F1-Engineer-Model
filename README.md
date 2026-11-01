@@ -5,7 +5,7 @@ race engineer: setup advice in practice, plus gaps, fuel, tyres, pit window and 
 
 - **Voice:** a natural British male voice ([Piper](https://github.com/OHF-Voice/piper1-gpl), offline) with a team-radio effect. Falls back to the Windows voice.
 - **Overlay:** a small radio box that pops up over the game while the engineer talks.
-- **Auto-start:** starts with Windows and stays idle (no CPU) until F1 25 sends data.
+- **Starts with the game:** Steam launch option runs the engineer alongside F1 25 and stops it when the game closes. Nothing runs otherwise.
 - **Optional radio button:** press a controller combo to ask for an update at any time.
 - **Real-world data:** per-track briefings built from real F1 races with [FastF1](https://github.com/theOehrly/Fast-F1).
 - **No extra packages:** the engineer itself uses only the Python standard library.
@@ -20,7 +20,7 @@ No injection, no memory reading, no file changes to the game.
 
 ## Setup
 
-1. Run `install.bat`. It installs Python if needed, adds auto-start, and starts the engineer.
+1. Run `install.bat`. It installs Python if needed, and prints the Steam launch option to paste.
 2. In F1 25, open **Settings → Telemetry Settings** and set:
    - UDP Telemetry: **On**
    - UDP Broadcast Mode: **Off**

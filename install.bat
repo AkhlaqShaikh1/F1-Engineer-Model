@@ -25,12 +25,13 @@ pushd "%~dp0voices"
 "%PY%" -m piper.download_voices en_GB-alan-medium en_GB-northern_english_male-medium
 popd
 
-rem Auto-start: a shortcut in the Windows Startup folder. The engineer idles until F1 25 sends telemetry.
-powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Startup')+'\F1 25 Race Engineer.lnk'); $s.TargetPath='%PYW%'; $s.Arguments='\"%~dp0app.py\"'; $s.WorkingDirectory='%~dp0'; $s.Save()"
-start "" "%PYW%" "%~dp0app.py"
+rem No auto-start: Steam runs launch.py with the game, so the engineer lives only while F1 25 runs.
+powershell -NoProfile -Command "Remove-Item -ErrorAction SilentlyContinue ([Environment]::GetFolderPath('Startup')+'\F1 25 Race Engineer.lnk')"
 
 echo.
-echo Installed. The engineer now starts with Windows and waits for F1 25.
+echo Installed. Last step, in Steam: F1 25 ^> Properties ^> Launch Options, paste:
+echo   "%PYW%" "%~dp0launch.py" %%command%%
+echo The engineer then starts and stops with the game.
 echo In F1 25: Settings ^> Telemetry Settings ^> UDP Telemetry On, IP 127.0.0.1, Port 20777, Format 2025.
 echo Use Borderless or Windowed display mode to see the overlay.
 echo Optional radio button: run "Bind Radio Button.bat".
