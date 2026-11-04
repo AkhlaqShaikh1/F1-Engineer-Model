@@ -16,6 +16,7 @@ import queue
 import random
 import subprocess
 import sys
+import tempfile
 import threading
 import wave
 import winsound
@@ -64,8 +65,62 @@ def to_wav(pcm, rate):
     return buf.getvalue()
 
 
-class PiperVoice:
+class Revoicer:
+    """Optional RVC step: re-voices Piper's audio with a trained voice model (Applio), kept loaded in
+    rvc_worker.py under Applio's own Python. If anything fails, the line plays in the Piper voice."""
+
     def __init__(self, model):
+        folder = os.path.dirname(os.path.abspath(model))
+        applio = os.path.dirname(os.path.dirname(folder))  # models live in <Applio>/logs/<name>/
+        index = next((os.path.join(folder, f) for f in os.listdir(folder) if f.endswith('.index')), '')
+        self.tmp = os.path.join(tempfile.gettempdir(), f'f1-engineer-rvc-{os.getpid()}')
+        self.lock = threading.Lock()
+        self.proc = subprocess.Popen(
+            [os.path.join(applio, '.venv', 'Scripts', 'python.exe'), os.path.join(HERE, 'rvc_worker.py'), model, index],
+            cwd=applio, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, creationflags=NO_WINDOW)
+        self.ready = False
+        self.lock.acquire()  # held until the model has loaded (~15 s): lines asked for meanwhile wait, then convert
+        threading.Thread(target=self.wait_ready, daemon=True).start()
+
+    def wait_ready(self):
+        try:
+            self.ready = self.proc.stdout.readline().strip() == 'ready'
+        finally:
+            self.lock.release()
+
+    def convert(self, pcm, rate):
+        """int16 mono PCM in; (pcm, rate) in the new voice out, or None if the worker failed."""
+        with self.lock:
+            if not self.ready:
+                return None
+            src, dst = self.tmp + '-in.wav', self.tmp + '-out.wav'
+            try:
+                with open(src, 'wb') as f:
+                    f.write(to_wav(pcm, rate))
+                self.proc.stdin.write(f'{src}\t{dst}\n')
+                self.proc.stdin.flush()
+                if self.proc.stdout.readline().strip() != 'ok':
+                    return None
+                with wave.open(dst, 'rb') as w:
+                    return w.readframes(w.getnframes()), w.getframerate()
+            except (OSError, wave.Error):  # worker died or wrote nothing: stop trying for this session
+                self.ready = False
+                return None
+
+
+def make_revoicer(model):
+    if not model or not os.path.exists(model):
+        return None
+    try:
+        return Revoicer(model)
+    except OSError:  # Applio or its venv not found
+        return None
+
+
+class PiperVoice:
+    def __init__(self, model, revoicer=None):
+        self.revoicer = revoicer
         with open(model + '.json', encoding='utf-8') as f:
             self.rate = json.load(f)['audio']['sample_rate']
         self.proc = subprocess.Popen(
@@ -93,9 +148,10 @@ class PiperVoice:
             try:
                 buf += self.chunks.get(timeout=UTTERANCE_GAP if buf else None)
             except queue.Empty:  # Piper went quiet: the message is complete
-                pcm = bytes(buf[:len(buf) // 2 * 2])
+                pcm, rate = bytes(buf[:len(buf) // 2 * 2]), self.rate
                 buf.clear()
-                winsound.PlaySound(to_wav(radio_fx(pcm, self.rate), self.rate), winsound.SND_MEMORY)
+                pcm, rate = (self.revoicer and self.revoicer.convert(pcm, rate)) or (pcm, rate)
+                winsound.PlaySound(to_wav(radio_fx(pcm, rate), rate), winsound.SND_MEMORY)
 
 
 class WindowsVoice:
@@ -121,36 +177,42 @@ def piper_installed():
         return False
 
 
-def make_voice(name=DEFAULT_VOICE):
-    """name: a Piper voice in voices/ (e.g. en_GB-alan-medium), or 'windows'."""
+def make_voice(name=DEFAULT_VOICE, rvc_model=None):
+    """name: a Piper voice in voices/ (e.g. en_GB-alan-medium), or 'windows'.
+    rvc_model: optional path to an Applio RVC .pth that re-voices the Piper audio."""
     model = os.path.join(VOICES, f'{name}.onnx')
     if name != 'windows' and os.path.exists(model) and piper_installed():
-        return PiperVoice(model)
+        return PiperVoice(model, make_revoicer(rvc_model))
     try:
         return WindowsVoice()
     except OSError:
         return None
 
 
-def render(text, name=DEFAULT_VOICE):
+def render(text, name=DEFAULT_VOICE, rvc_model=None):
     """One-off: radio WAV bytes for text, for samples and tests."""
     model = os.path.join(VOICES, f'{name}.onnx')
     with open(model + '.json', encoding='utf-8') as f:
         rate = json.load(f)['audio']['sample_rate']
     pcm = subprocess.run([python_exe(), '-m', 'piper', '-m', model, '--output-raw', '--length-scale', '0.92'],
                          input=text.encode('utf-8'), capture_output=True, creationflags=NO_WINDOW).stdout
-    return to_wav(radio_fx(pcm[:len(pcm) // 2 * 2], rate), rate)
+    pcm = pcm[:len(pcm) // 2 * 2]
+    revoicer = make_revoicer(rvc_model)
+    pcm, rate = (revoicer and revoicer.convert(pcm, rate)) or (pcm, rate)
+    return to_wav(radio_fx(pcm, rate), rate)
 
 
 if __name__ == '__main__':
     args = sys.argv[1:]
     cfg_path = os.path.join(HERE, 'config.json')
-    name = DEFAULT_VOICE
+    cfg = {}
     if os.path.exists(cfg_path):
         with open(cfg_path, encoding='utf-8') as f:
-            name = json.load(f).get('voice', DEFAULT_VOICE)
+            cfg = json.load(f)
+    name, rvc_model = cfg.get('voice', DEFAULT_VOICE), cfg.get('rvc_model')
     if args[:1] == ['--save']:
         with open(args[1], 'wb') as f:
-            f.write(render(' '.join(args[2:]), name))
+            f.write(render(' '.join(args[2:]), name, rvc_model))
     else:
-        winsound.PlaySound(render(' '.join(args) or 'Radio check. How do you read?', name), winsound.SND_MEMORY)
+        winsound.PlaySound(render(' '.join(args) or 'Radio check. How do you read?', name, rvc_model),
+                           winsound.SND_MEMORY)

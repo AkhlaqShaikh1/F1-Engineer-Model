@@ -135,7 +135,7 @@ def main():
         return print(f'Port {PORT} busy: the engineer is already running.')  # also our single-instance guard
 
     overlay = Overlay(cfg)
-    speaker = None if '--mute' in args else voice.make_voice(cfg['voice'])
+    speaker = None if '--mute' in args else voice.make_voice(cfg['voice'], cfg.get('rvc_model'))
     eng = engineer.Engineer(engineer.Radio(speaker, on_say=overlay.inbox.put))
     threading.Thread(target=listen, args=(sock, eng), daemon=True).start()
     if cfg['radio_button'] and talkback.whisper:

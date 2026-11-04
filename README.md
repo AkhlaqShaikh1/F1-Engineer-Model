@@ -39,6 +39,11 @@ Drag the overlay to move it. Right-click it to quit. To remove the engineer, run
 or to `"windows"` for the built-in Windows voice. Then restart the engineer.
 Preview a voice: `python voice.py "Box box, box box."`
 
+Optional custom voice: if you trained an RVC model in [Applio](https://github.com/IAHispano/Applio),
+set `"rvc_model"` in `config.json` to its `.pth` (in `<Applio>/logs/<name>/`). The engineer keeps it
+loaded via `rvc_worker.py` under Applio's own Python and re-voices each Piper line (about 20 s to load
+at start, then about half a second per line). If it fails, lines play in the Piper voice.
+
 Piper is GPL-3.0 and runs as a separate program; it is not bundled with or linked into this MIT code.
 
 ### Optional radio button
@@ -144,7 +149,8 @@ still works; it just skips the real-world briefing.
 |------|------|
 | `app.py` | Entry point: overlay, telemetry listener, radio button |
 | `engineer.py` | Packet parsing (F1 25 UDP format 2025) and all the advice |
-| `voice.py` | Piper voice + team-radio effect, Windows voice fallback |
+| `voice.py` | Piper voice + team-radio effect, Windows voice fallback, optional RVC re-voicing |
+| `rvc_worker.py` | Keeps an Applio RVC model loaded for `voice.py` (runs under Applio's Python) |
 | `coach.py` | Optional live corner predictor (PyTorch) |
 | `talkback.py` | Optional talk-back: push to talk, Whisper speech to text |
 | `session_report.py` | Session report pages in `reports/` |
