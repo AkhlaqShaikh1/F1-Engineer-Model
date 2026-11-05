@@ -41,8 +41,10 @@ Preview a voice: `python voice.py "Box box, box box."`
 
 Optional custom voice: if you trained an RVC model in [Applio](https://github.com/IAHispano/Applio),
 set `"rvc_model"` in `config.json` to its `.pth` (in `<Applio>/logs/<name>/`). The engineer keeps it
-loaded via `rvc_worker.py` under Applio's own Python and re-voices each Piper line (about 20 s to load
-at start, then about half a second per line). If it fails, lines play in the Piper voice.
+loaded via `rvc_worker.py` under Applio's own Python and re-voices each Piper line on the CPU at low
+priority, so it never takes frames from the game. It takes about 20 s to load at start and, with F1 25
+running, 6 to 7 s per line on the CPU (2 to 4 s on the GPU, but then the game drops to a few fps while each
+line converts). That is too late for race calls, so it is off by default. If it fails, lines play in the Piper voice.
 
 Piper is GPL-3.0 and runs as a separate program; it is not bundled with or linked into this MIT code.
 
@@ -55,8 +57,8 @@ Remove it with `python app.py --unbind`.
 
 **Talk-back (optional).** With `pip install openai-whisper sounddevice`, hold the radio button, ask a
 question into your headset mic, and let go: "how are the tyres?", "what's the gap?", "when do we box?",
-"fuel?", "battery?", "best lap?", "weather?". Speech to text runs locally with Whisper, on the GPU when
-PyTorch sees one. A quick tap still gives the usual update.
+"fuel?", "battery?", "best lap?", "weather?". Speech to text runs locally with Whisper,
+on the CPU. A quick tap still gives the usual update.
 
 ## What it tells you
 
@@ -80,11 +82,11 @@ session coaches you against your all-time best from lap 1 and opens with your we
 Repeated mistakes get called: "that's 3 laps in a row".
 
 **Live corner coach (optional, needs PyTorch).** A small neural net per track learns your clean laps
-on your PC. After 5 laps of data it trains in the background (on the GPU when PyTorch sees one) and
+on your PC. After 5 laps of data it trains in the background on the CPU and
 retrains after every clean lap. At each apex it predicts your corner exit time from your speed, pedals
 and the car's state (fuel, tyre wear, compound, wet), compares it with what you usually do from that corner
 entry in that state, and calls a slow corner while you are still in it: "Turn 7, losing 0.3."
-So heavy fuel or old tyres don't get blamed on you. Models are kept in `models/`.
+So heavy fuel or old tyres don't get blamed on you. Models are kept in `models/` (see [Trained weights](#trained-weights)).
 
 **Theoretical best.** Your best lap plus your best time in every corner: "Theoretical best 1 21.9, time
 left in turn 1 and turn 11."
@@ -93,16 +95,9 @@ left in turn 1 and turn 11."
 times, time lost or gained per corner against your best lap, theoretical best, habits, and tyre deg in a race.
 Open it in a browser between stints.
 
-GPU PyTorch for an AMD RX 9060 XT (gfx1200) on Windows, from
-[AMD's ROCm PyTorch page](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/frameworks/pytorch/install.html):
-
-```
-python -m pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ "torch[device-gfx1200]==2.14.0+rocm10.1.0"
-python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
-```
-
-NVIDIA cards: the CUDA build from pytorch.org. No GPU: `pip install torch` runs it on the CPU, which is fast enough.
-The engineer log prints `coach trained on cuda` (ROCm also reports as cuda) or `on cpu`.
+The coach, talk-back and RVC voice all run on the CPU, even with a GPU build of PyTorch: GPU compute
+while F1 25 renders drops the game to a few fps. `pip install torch` is enough. To try the GPU anyway,
+set `"gpu": true` in `config.json`.
 
 **Race:**
 - the real-race strategy for that track, scaled to your race length (pit window lap), replaced by your own once it has 4 laps of your tyre deg: "Your tyres are losing 0.12 a lap. Best stop around lap 23.";
@@ -113,6 +108,86 @@ The engineer log prints `coach trained on cuda` (ROCm also reports as cuda) or `
 - safety car (including a cheap pit stop call), penalties, front wing damage, weather, and the last lap.
 
 Corner numbers are the official ones, placed using real F1 track data.
+
+## How it works
+
+```mermaid
+flowchart LR
+    game["F1 25<br/>UDP telemetry :20777"] --> eng["engineer.py<br/>parse packets, track state,<br/>decide what to say"]
+    pad["Controller<br/>radio button"] --> ctl["controller.py"]
+    mic["Headset mic"] --> tb["talkback.py<br/>Whisper speech to text"]
+    ctl --> tb
+    tb -->|question| eng
+    eng <--> coach["coach.py<br/>corner net per track"]
+    eng --> rep["session_report.py<br/>reports/*.html"]
+    eng --> mem[("tracks.json<br/>your bests and habits")]
+    eng -->|line of text| voice["voice.py"]
+    eng --> ovl["app.py overlay"]
+    voice --> spk["Speakers"]
+```
+
+`app.py` listens on UDP, hands every packet to `engineer.py`, and shows each radio line in the overlay.
+The engineer is plain Python; PyTorch, Whisper and Piper are optional add-ons it uses when installed.
+
+### Voice pipeline
+
+```mermaid
+flowchart LR
+    txt["Text"] --> piper["Piper TTS<br/>own process"]
+    piper -->|raw PCM| gap{"0.5 s<br/>of silence?"}
+    gap -->|line complete| rvc{"rvc_model<br/>set?"}
+    rvc -->|yes| worker["rvc_worker.py<br/>Applio RVC, CPU,<br/>low priority"]
+    rvc -->|no| fx
+    worker --> fx["radio_fx<br/>300-3000 Hz band,<br/>crunch, hiss, squelch"]
+    fx --> play["winsound"]
+```
+
+Piper and the RVC worker stay loaded for the whole session, so a line costs only synthesis time. If the
+RVC worker fails, the line plays in the Piper voice.
+
+### GPU or CPU
+
+Everything that uses PyTorch runs on the CPU by default. F1 25 keeps the GPU busy, and on Windows a
+compute job on the same AMD GPU holds it until it finishes, so the game drops to a few fps while it runs.
+Measured on an RX 9060 XT with F1 25 running:
+
+| Job | CPU | GPU |
+|-----|-----|-----|
+| RVC re-voicing, one 3.5 s line | 6 to 7 s, no fps loss | 2 to 4 s, game drops to a few fps |
+| Corner net training | under a second | under a second, a stutter |
+| Whisper `base.en`, one question | about a second | faster, a stutter |
+
+Set `"gpu": true` in `config.json` to run all three on the GPU anyway. Torch uses at most 4 CPU threads.
+
+## Trained weights
+
+`models/6.pt` is a live corner coach net trained on my own laps of Montreal (10 clean laps, 7118
+samples). Files are named by the F1 25 track id (see `TRACKS` in `engineer.py`). Keep it in your
+`models/` to get live corner calls at Montreal from lap 1; the coach keeps retraining it on your laps.
+Nets for other tracks are trained on your PC and are not committed.
+
+Each file is a `torch.save` dict:
+
+| Key | What |
+|-----|------|
+| `net` | `state_dict` of the net below |
+| `x` | training inputs, one row per corner sample, 9 features |
+| `y` | targets: seconds from that sample to the corner exit |
+| `laps` | clean laps the data came from |
+
+```mermaid
+flowchart LR
+    in["9 inputs<br/>lap fraction, metres to corner exit,<br/>speed, throttle, brake,<br/>fuel, tyre wear, compound, wet"] --> l1["Linear 64<br/>ReLU"] --> l2["Linear 64<br/>ReLU"] --> out["seconds to<br/>corner exit"]
+```
+
+```python
+import torch, coach
+saved = torch.load('models/6.pt', weights_only=True)
+net = coach.build(); net.load_state_dict(saved['net']); net.eval()
+print(net(torch.tensor([coach.features(0.12, 150, 210, 0.4, 0.0, (0.5, 0.2, 0.5, 0))])).item())
+```
+
+The voice model of the RVC option is not published.
 
 ## Race simulator
 
@@ -160,7 +235,7 @@ still works; it just skips the real-world briefing.
 | `build_track_data.py` | Builds `track_data.json` from FastF1 |
 | `tests/test_engineer.py` | Feeds fake packets through the engineer: `python tests/test_engineer.py` |
 
-`tracks.json` (your own bests) and `config.json` (overlay position, radio button) are created on your PC and are not committed.
+`tracks.json` (your own bests) and `config.json` (overlay position, radio button, voice, `gpu`) are created on your PC and are not committed.
 
 ## License
 

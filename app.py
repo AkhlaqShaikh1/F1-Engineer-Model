@@ -119,6 +119,8 @@ def bind(cfg):
 def main():
     args = sys.argv[1:]
     cfg = load_config()
+    if cfg.get('gpu'):  # coach, talk-back and RVC read this; off by default: GPU compute can drop the game to a few fps
+        os.environ['F1E_GPU'] = '1'
     if '--bind' in args:
         return bind(cfg)
     if '--unbind' in args:

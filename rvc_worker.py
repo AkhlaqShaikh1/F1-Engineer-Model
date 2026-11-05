@@ -12,6 +12,9 @@ reply = sys.stdout
 sys.stdout = sys.stderr  # Applio prints progress; stdout carries only our replies
 sys.path.insert(0, os.getcwd())
 
+import torch  # noqa: E402
+torch.set_num_threads(4)  # leave the other cores to the game
+
 import core  # noqa: E402  Applio's core.py, found through the working directory
 from rvc.infer.infer import VoiceConverter  # noqa: E402
 

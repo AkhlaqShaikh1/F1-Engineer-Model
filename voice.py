@@ -78,9 +78,10 @@ class Revoicer:
         self.proc = subprocess.Popen(
             [os.path.join(applio, '.venv', 'Scripts', 'python.exe'), os.path.join(HERE, 'rvc_worker.py'), model, index],
             cwd=applio, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            text=True, creationflags=NO_WINDOW)
+            text=True, creationflags=NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS,
+            env=os.environ if os.environ.get('F1E_GPU') else {**os.environ, 'HIP_VISIBLE_DEVICES': '-1', 'CUDA_VISIBLE_DEVICES': '-1'})
         self.ready = False
-        self.lock.acquire()  # held until the model has loaded (~15 s): lines asked for meanwhile wait, then convert
+        self.lock.acquire()  # held until the model has loaded: lines asked for meanwhile wait, then convert
         threading.Thread(target=self.wait_ready, daemon=True).start()
 
     def wait_ready(self):

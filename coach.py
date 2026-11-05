@@ -1,4 +1,4 @@
-"""Optional live corner predictor: a small neural net that learns your clean laps, on your GPU if PyTorch sees one.
+"""Optional live corner predictor: a small neural net that learns your clean laps, on the CPU (see "gpu" in config.json).
 
 From your position, speed and pedals mid-corner, plus the car's state (fuel, tyre wear, compound,
 wet), it predicts the time left to the corner exit, so the engineer can call a corner that is going
@@ -12,6 +12,8 @@ try:
     import torch
 except ImportError:
     torch = None
+else:
+    torch.set_num_threads(4)  # leave the other cores to the game
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MODELS = os.path.join(HERE, 'models')
@@ -68,7 +70,7 @@ class Coach:
 
     def train(self, x, y, steps=600):
         try:
-            dev = 'cuda' if torch.cuda.is_available() else 'cpu'  # ROCm builds also report as cuda
+            dev = 'cuda' if os.environ.get('F1E_GPU') and torch.cuda.is_available() else 'cpu'  # see "gpu" in config.json
             X = torch.tensor(x, device=dev)
             Y = torch.tensor(y, device=dev).unsqueeze(1)
             net = build().to(dev)
